@@ -5,19 +5,12 @@ import matplotlib.pyplot as plt
 import random
 import re
 
-
 dataset = load_dataset("pranavs28/pokemon_types")
 
-
-
-# Calculate normalization statistics from training data
-train_mean, train_std = calculate_normalization_stats(dataset, split='train')
-
-# Use calculated statistics for preprocessing
 preprocess = transforms.Compose([
     transforms.Resize((512, 512)),
     transforms.ToTensor(),
-    transforms.Normalize(train_mean, train_std),  # Dataset-specific normalization
+    transforms.Normalize([0.8412341475486755, 0.8291147947311401, 0.8151265978813171], [0.24166467785835266, 0.24730020761489868, 0.25928303599357605]), 
 ])
 
 
