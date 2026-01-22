@@ -8,10 +8,16 @@ import re
 
 dataset = load_dataset("pranavs28/pokemon_types")
 
+
+
+# Calculate normalization statistics from training data
+train_mean, train_std = calculate_normalization_stats(dataset, split='train')
+
+# Use calculated statistics for preprocessing
 preprocess = transforms.Compose([
     transforms.Resize((512, 512)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5], [0.5]),
+    transforms.Normalize(train_mean, train_std),  # Dataset-specific normalization
 ])
 
 
