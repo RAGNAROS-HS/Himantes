@@ -1,11 +1,49 @@
-mport torch
+import torch
 from datasets import load_dataset
-from diffusers import DiffusionPipeline, DDPMScheduler, UNet2DModel
-from diffusers.training_utils import EMAModel
-from diffusers.optimization import get_scheduler
-from transformers import AutoencoderKL
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
+from torchvision import transforms
+import matplotlib.pyplot as plt
+import random
+import re
 
 
-ds = load_dataset("pranavs28/pokemon_types")
+dataset = load_dataset("pranavs28/pokemon_types")
+
+preprocess = transforms.Compose([
+    transforms.Resize((512, 512)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5], [0.5]),
+])
+
+
+def extract_types(text):
+    # Capture actual type words, filter stop words, lowercase
+    words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+    stop_words = {'and', 'type', 'pokemon', 'pokémon'}  
+    types = [word for word in words if word not in stop_words]
+    return types  
+
+def display_sample_images(dataset, num_samples=5, split='train'):
+    dataset_split = dataset[split]
+    total_samples = len(dataset_split)
+    indices = random.sample(range(total_samples), min(num_samples, total_samples))
+    
+    fig, axes = plt.subplots(1, num_samples, figsize=(15, 3))
+    
+    for idx, ax in zip(indices, axes):
+        sample = dataset_split[idx]
+        image = sample['image']
+        pokemon_type_text = sample['text']
+        
+        # Extract clean types from the text
+        types = extract_types(pokemon_type_text)
+        print(types)
+        type_display = '/'.join(types) if types else 'Unknown'
+        
+        ax.imshow(image)
+        ax.set_title(f"Type: {type_display}", fontsize=10)
+        ax.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+display_sample_images(dataset)
