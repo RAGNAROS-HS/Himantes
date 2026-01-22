@@ -1,2 +1,2 @@
 # Himantes
-A personal project for learning Hugginface + pytorch. Will aim to implement both a pokemon classifier and creator.
+Learning Hugginface + pytorch by implementing a pokemon classifier. Applying that to larger pokemon datasets and subsequently training a diffusion model for new pokemon creation.
