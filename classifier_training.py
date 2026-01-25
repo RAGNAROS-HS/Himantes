@@ -1,4 +1,5 @@
 from datasets import load_from_disk
+from torch.utils.data import DataLoader
 import numpy as np
 from PIL import Image
 
@@ -83,9 +84,35 @@ class NeuralNet(nn.Module):
 
 
 net = NeuralNet()
-dict_keys = ds['train'].features
-print(dict_keys)
 # We need to ensure the labels are floats for BCEWithLogitsLoss
 loss_function = nn.BCEWithLogitsLoss()
 
 optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+
+trainloader = DataLoader(train_data, batch_size=4, shuffle=True)
+testloader = DataLoader(test_data, batch_size=4, shuffle=False)
+
+for epoch in range(3):
+    print(f"Training epoch {epoch}")
+
+    running_loss = 0.0
+    for i, data in enumerate(trainloader):
+        inputs = data['image']
+        labels = data['label']
+
+        optimizer.zero_grad()
+        outputs = net(inputs)
+
+        loss = loss_function(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        if i % 100 == 99:  # Print every 100 mini-batches
+            print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 100:.3f}")
+            running_loss = 0.0
+
+
+
+torch.save(net.state_dict(), 'pokemon_classifier.pth')  
