@@ -117,7 +117,7 @@ optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 trainloader = DataLoader(train_data, batch_size=4, shuffle=True)
 testloader = DataLoader(test_data, batch_size=4, shuffle=False)
 
-for epoch in range(3):
+for epoch in range(10):
     print(f"Training epoch {epoch}")
 
     running_loss = 0.0

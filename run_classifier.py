@@ -32,7 +32,11 @@ class NeuralNet(nn.Module):
         self.conv5 = nn.Conv2d(128, 256, 3, padding=1)
         self.conv6 = nn.Conv2d(256, 256, 3, padding=1)
         self.pool4 = nn.MaxPool2d(2, 2) # Not used in forward, but kept for compatibility if needed
-        self.fc1 = nn.Linear(256 * 32 * 32, 512)
+        
+        # Add Adaptive Pooling to reduce dimensions significantly before fully connected layers
+        self.avgpool = nn.AdaptiveAvgPool2d((4, 4)) # Output: (256, 4, 4)
+
+        self.fc1 = nn.Linear(256 * 4 * 4, 512)
         self.dropout = nn.Dropout(0.5)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, NUM_CLASSES)
@@ -46,6 +50,7 @@ class NeuralNet(nn.Module):
         x = F.relu(self.conv5(x))
         x = F.relu(self.conv6(x))
         x = self.pool3(x)
+        x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
