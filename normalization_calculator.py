@@ -18,7 +18,7 @@ def calculate_normalization_stats(dataset, split='train'):
     
     # Transform without normalization
     transform = transforms.Compose([
-        transforms.Resize((512, 512)),
+        transforms.Resize((128, 128)),
         transforms.ToTensor(),
     ])
     

@@ -23,8 +23,9 @@ try:
     for i in range(total_images):
         labels = train_data[i]['label']
         # labels is a list of type IDs
-        for label_id in labels:
-             counts[label_id] += 1
+        if len(labels) > 0:
+             primary_label = labels[0]
+             counts[primary_label] += 1
              
     print("\nClass Distribution:")
     sorted_counts = sorted(counts.items(), key=lambda item: item[1], reverse=True)

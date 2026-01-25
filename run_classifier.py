@@ -22,16 +22,16 @@ NUM_CLASSES = 18
 class NeuralNet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.pool2 = nn.MaxPool2d(2, 2)
-        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1) # (32, 128, 128)
+        self.pool = nn.MaxPool2d(2, 2) # (32, 64, 64)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1) # 64x64x64
+        self.pool2 = nn.MaxPool2d(2, 2) # (64, 32, 32)
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1) # 32x32x128 (block)
         self.conv4 = nn.Conv2d(128, 128, 3, padding=1)
-        self.pool3 = nn.MaxPool2d(2, 2)
-        self.conv5 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool3 = nn.MaxPool2d(2, 2) # (128, 16, 16)
+        self.conv5 = nn.Conv2d(128, 256, 3, padding=1) # 16x16x256
         self.conv6 = nn.Conv2d(256, 256, 3, padding=1)
-        self.pool4 = nn.MaxPool2d(2, 2) # Not used in forward, but kept for compatibility if needed
+        self.pool4 = nn.MaxPool2d(2, 2) # (256, 8, 8)
         
         # Add Adaptive Pooling to reduce dimensions significantly before fully connected layers
         self.avgpool = nn.AdaptiveAvgPool2d((4, 4)) # Output: (256, 4, 4)
@@ -60,24 +60,24 @@ class NeuralNet(nn.Module):
 
 # --- Data Preparation ---
 preprocess = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((128, 128)),
     transforms.ToTensor(),
-    transforms.Normalize([0.8412341475486755, 0.8291147947311401, 0.8151265978813171], 
-                         [0.24166467785835266, 0.24730020761489868, 0.25928303599357605]), 
+    # transforms.Normalize([0.8412341475486755, 0.8291147947311401, 0.8151265978813171], 
+    #                      [0.24166467785835266, 0.24730020761489868, 0.25928303599357605]), 
+    transforms.Normalize([0.8412953615188599, 0.8291792869567871, 0.8151875138282776], [0.2233351469039917, 0.2296644002199173, 0.2426573634147644]),
 ])
 
 def transform_images(batch):
     batch['image'] = [preprocess(image.convert("RGB")) for image in batch['image']]
     
-    multi_hot_labels = []
+    primary_labels = []
     for labels in batch['label']:
-        target = torch.zeros(NUM_CLASSES)
-        for label_id in labels:
-            if 0 <= label_id < NUM_CLASSES:
-                target[label_id] = 1.0
-        multi_hot_labels.append(target)
+        if len(labels) > 0:
+            primary_labels.append(labels[0])
+        else:
+            primary_labels.append(0)
     
-    batch['label'] = multi_hot_labels
+    batch['label'] = primary_labels
     return batch
 
 # --- Main Execution ---
@@ -113,19 +113,17 @@ if __name__ == "__main__":
     with torch.no_grad():
         for data in testloader:
             inputs = data['image']
-            labels = data['label'] # Multi-hot tensors
+            labels = data['label'] # Long list of class indices
 
             outputs = net(inputs)
-            probs = torch.sigmoid(outputs)
+            # outputs shape: [batch_size, NUM_CLASSES]
             
-            # Metric 1: Top-1 Accuracy (Is the highest probability class actually one of the true classes?)
-            _, predicted_top1_idx = torch.max(probs, 1)
+            # Get predicted class index
+            _, predicted = torch.max(outputs, 1)
             
-            for i in range(inputs.size(0)):
-                # labels[i] is multi-hot. Check if labels[i][predicted_top1_idx] == 1
-                if labels[i][predicted_top1_idx[i]] == 1:
-                    correct_top1 += 1
-                total += 1
+            # Compare with ground truth
+            correct_top1 += (predicted == labels).sum().item()
+            total += labels.size(0)
 
     print(f"Top-1 Accuracy on test set: {100 * correct_top1 / total:.2f}%")
 
@@ -153,20 +151,21 @@ if __name__ == "__main__":
         # Predict
         with torch.no_grad():
             output = net(input_tensor)
-            probs = torch.sigmoid(output)[0]
+            # Softmax to get probabilities (optional for visualization, argmax is enough for class)
+            probs = F.softmax(output, dim=1)[0]
         
-        # Get predictions > threshold
-        pred_indices = (probs > threshold).nonzero(as_tuple=True)[0].tolist()
-        
-        # If nothing > threshold, take top 1
-        if not pred_indices:
-            pred_indices = [torch.argmax(probs).item()]
+        # Get top prediction
+        pred_idx = torch.argmax(probs).item()
             
-        pred_labels = [ID_TO_TYPE[i] for i in pred_indices]
+        pred_label = ID_TO_TYPE[pred_idx]
+        
+        # Raw label is a list of all types, let's show the primary for consistency
+        # or show all true types vs predicted primary
         true_labels = [ID_TO_TYPE[i] for i in raw_sample['label']]
+        primary_true = true_labels[0] if true_labels else "Unknown"
         
         ax.imshow(raw_sample['image'])
-        ax.set_title(f"True: {', '.join(true_labels)}\nPred: {', '.join(pred_labels)}")
+        ax.set_title(f"True: {primary_true}\nPred: {pred_label}")
         ax.axis('off')
     
     print("Showing plot...")

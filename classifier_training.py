@@ -13,28 +13,28 @@ import torchvision.transforms as transforms
 
 # Define the transform
 preprocess = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((128, 128)),
     transforms.ToTensor(),
-    transforms.Normalize([0.8412341475486755, 0.8291147947311401, 0.8151265978813171], [0.24166467785835266, 0.24730020761489868, 0.25928303599357605]), 
+   # transforms.Normalize([0.8412341475486755, 0.8291147947311401, 0.8151265978813171], [0.24166467785835266, 0.24730020761489868, 0.25928303599357605]), 
+    transforms.Normalize([0.8412953615188599, 0.8291792869567871, 0.8151875138282776], [0.2233351469039917, 0.2296644002199173, 0.2426573634147644]),
 ])
 
 def transform_images(batch):
     # Apply the transform to the batch of images
     batch['image'] = [preprocess(image.convert("RGB")) for image in batch['image']]
     
-    # Convert labels to multi-hot vectors for multi-label classification
-    num_classes = 18
-    # batch['label'] contains a list of lists, where each inner list has the type IDs
-    multi_hot_labels = []
+    # Convert labels to single integer (primary type)
+    # batch['label'] contains a list of lists. We take the first element of each inner list.
+    primary_labels = []
     for labels in batch['label']:
-        # Create a zero tensor of shape (num_classes,)
-        target = torch.zeros(num_classes)
-        for label_id in labels:
-             if 0 <= label_id < num_classes:
-                target[label_id] = 1.0
-        multi_hot_labels.append(target)
-    
-    batch['label'] = multi_hot_labels
+        # Taking the first label as the primary type
+        if len(labels) > 0:
+            primary_labels.append(labels[0])
+        else:
+            # Fallback for empty label lists (shouldn't happen in this dataset but good for safety)
+            primary_labels.append(0) 
+            
+    batch['label'] = primary_labels
     return batch
 
 ds = load_from_disk("processed_pokemon_dataset")
@@ -46,14 +46,21 @@ raw_train_data = ds['train']
 num_classes = 18
 class_counts = torch.zeros(num_classes)
 for labels in raw_train_data['label']:
-    for label_id in labels:
-        if 0 <= label_id < num_classes:
-            class_counts[label_id] += 1
+    # Only count the primary type
+    if len(labels) > 0:
+        primary = labels[0]
+        if 0 <= primary < num_classes:
+            class_counts[primary] += 1
 
-# pos_weight = (num_negatives / num_positives)
+# pos_weight is for BCE, for CrossEntropyLoss we use just 'weight'
+# Formula: total / (num_classes * count) or similar inverse frequency
 total_samples = len(raw_train_data)
-pos_weights = (total_samples - class_counts) / (class_counts + 1e-6) 
-print(f"Class weights (pos_weight): {pos_weights}")
+# Simple inverse frequency
+weights = total_samples / (num_classes * class_counts)
+# Handle potential division by zero if a class is missing (add epsilon or clamp)
+weights = torch.where(class_counts > 0, weights, torch.ones_like(weights))
+
+print(f"Class weights: {weights}")
 
 ds.set_transform(transform_images)
 train_data = ds['train']
@@ -68,16 +75,16 @@ print("Image shape:", train_data[0]['image'].shape)
 class NeuralNet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 32, 3, padding=1) # (32, 512, 512)
-        self.pool = nn.MaxPool2d(2, 2) # (32, 256, 256)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1) # 256x256x64
-        self.pool2 = nn.MaxPool2d(2, 2) # (64, 128, 128)
-        self.conv3 = nn.Conv2d(64, 128, 3, padding=1) # 256x256x128 (block)
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1) # (32, 128, 128)
+        self.pool = nn.MaxPool2d(2, 2) # (32, 64, 64)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1) # 64x64x64
+        self.pool2 = nn.MaxPool2d(2, 2) # (64, 32, 32)
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1) # 32x32x128 (block)
         self.conv4 = nn.Conv2d(128, 128, 3, padding=1)
-        self.pool3 = nn.MaxPool2d(2, 2) # (128, 64, 64)
-        self.conv5 = nn.Conv2d(128, 256, 3, padding=1) # 128x128x256
+        self.pool3 = nn.MaxPool2d(2, 2) # (128, 16, 16)
+        self.conv5 = nn.Conv2d(128, 256, 3, padding=1) # 16x16x256
         self.conv6 = nn.Conv2d(256, 256, 3, padding=1)
-        self.pool4 = nn.MaxPool2d(2, 2) # (256, 32, 32)
+        self.pool4 = nn.MaxPool2d(2, 2) # (256, 8, 8)
         
         # Add Adaptive Pooling to reduce dimensions significantly before fully connected layers
         self.avgpool = nn.AdaptiveAvgPool2d((4, 4)) # Output: (256, 4, 4)
@@ -87,16 +94,16 @@ class NeuralNet(nn.Module):
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, 18)
 
-    def forward(self, x):  # Dims: 512→256→128→64→32→16 flatten
-            x = self.pool(F.relu(self.conv1(x)))  # 256x256x32
-            x = self.pool(F.relu(self.conv2(x)))  # 128x128x64? Wait pool after conv2 single
+    def forward(self, x):  # Dims: 128->64->32->16->8
+            x = self.pool(F.relu(self.conv1(x)))  # 64x64x32
+            x = self.pool(F.relu(self.conv2(x)))  # 32x32x64
             # Better: group
             x = F.relu(self.conv3(x))
             x = F.relu(self.conv4(x))
-            x = self.pool2(x)  # 64x64x128
+            x = self.pool2(x)  # 16x16x128
             x = F.relu(self.conv5(x))
             x = F.relu(self.conv6(x))
-            x = self.pool3(x)  # 32x32x256
+            x = self.pool3(x)  # 8x8x256
             x = self.avgpool(x) # 4x4x256
             x = torch.flatten(x, 1)
             x = F.relu(self.fc1(x))
@@ -109,7 +116,7 @@ class NeuralNet(nn.Module):
 
 net = NeuralNet()
 
-loss_function = nn.BCEWithLogitsLoss(pos_weight=pos_weights)
+loss_function = nn.CrossEntropyLoss(weight=weights)
 
 optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
@@ -140,3 +147,6 @@ for epoch in range(10):
 
 
 torch.save(net.state_dict(), 'pokemon_classifier.pth')  
+
+#pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu129
+#this might help with GPU issues
