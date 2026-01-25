@@ -38,6 +38,23 @@ def transform_images(batch):
     return batch
 
 ds = load_from_disk("processed_pokemon_dataset")
+
+# Create class weights for loss balancing
+# Calculate weights BEFORE setting the transform to access raw integer labels
+print("Calculating class weights...")
+raw_train_data = ds['train']
+num_classes = 18
+class_counts = torch.zeros(num_classes)
+for labels in raw_train_data['label']:
+    for label_id in labels:
+        if 0 <= label_id < num_classes:
+            class_counts[label_id] += 1
+
+# pos_weight = (num_negatives / num_positives)
+total_samples = len(raw_train_data)
+pos_weights = (total_samples - class_counts) / (class_counts + 1e-6) 
+print(f"Class weights (pos_weight): {pos_weights}")
+
 ds.set_transform(transform_images)
 train_data = ds['train']
 test_data = ds['test']
@@ -45,6 +62,8 @@ test_data = ds['test']
 print(f"Training set size: {len(train_data)}")
 print(f"Test set size: {len(test_data)}")
 print("Image shape:", train_data[0]['image'].shape)
+
+
 
 class NeuralNet(nn.Module):
     def __init__(self):
@@ -59,7 +78,11 @@ class NeuralNet(nn.Module):
         self.conv5 = nn.Conv2d(128, 256, 3, padding=1) # 128x128x256
         self.conv6 = nn.Conv2d(256, 256, 3, padding=1)
         self.pool4 = nn.MaxPool2d(2, 2) # (256, 32, 32)
-        self.fc1 = nn.Linear(256 * 32 * 32, 512)  # 64x64 →32x32 wait no: track below
+        
+        # Add Adaptive Pooling to reduce dimensions significantly before fully connected layers
+        self.avgpool = nn.AdaptiveAvgPool2d((4, 4)) # Output: (256, 4, 4)
+        
+        self.fc1 = nn.Linear(256 * 4 * 4, 512)  # Reduced from 262k inputs to 4k inputs
         self.dropout = nn.Dropout(0.5)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, 18)
@@ -73,19 +96,20 @@ class NeuralNet(nn.Module):
             x = self.pool2(x)  # 64x64x128
             x = F.relu(self.conv5(x))
             x = F.relu(self.conv6(x))
-            x = self.pool3(x)  # 32x32x256 → flatten 256*32*32=262k
+            x = self.pool3(x)  # 32x32x256
+            x = self.avgpool(x) # 4x4x256
             x = torch.flatten(x, 1)
             x = F.relu(self.fc1(x))
             x = self.dropout(x)
             x = F.relu(self.fc2(x))
             x = self.fc3(x)
-            # remove log_softmax for BCEWithLogitsLoss which expects raw logits
+
             return x
 
 
 net = NeuralNet()
-# We need to ensure the labels are floats for BCEWithLogitsLoss
-loss_function = nn.BCEWithLogitsLoss()
+
+loss_function = nn.BCEWithLogitsLoss(pos_weight=pos_weights)
 
 optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
