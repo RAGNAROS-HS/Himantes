@@ -1,74 +1,73 @@
 # Himantes
 
-Learning Hugging Face + PyTorch by implementing a Pokémon classifier. Applying that to larger Pokémon datasets and subsequently training a diffusion model for new Pokémon creation.
+**STATUS: ABANDONED**
+
+> **Post-Mortem:** This project has been discontinued. While a functional classification pipeline was established, the model struggled to generalize effectively. The primary blockers were:
+> 1.  **High-Variance Anatomy:** Pokémon designs exhibit extreme morphological diversity within the same type (e.g., *Charmander* vs. *Torkoal*), making visual patterns difficult for a standard CNN to capture without massive data.
+> 2.  **Insufficient Data:** The available dataset provided too few examples per class to overcome the high variance, likely leading to overfitting or poor feature representation.
 
 ## Project Overview
 
-This project aims to build a comprehensive Pokémon type classification system using PyTorch and Hugging Face's `datasets` library, with future plans to develop a diffusion model for generating new Pokémon designs.
+This project aimed to build a deep learning system to classify Pokémon types from images using PyTorch and Hugging Face's `datasets`. The goal was to train a custom CNN to predict up to two types for a given Pokémon image.
 
-## What Has Been Done So Far
+## Implemented Features
 
-### 1. Dataset Integration
-- Integrated the `pranavs28/pokemon_types` dataset from Hugging Face
-- Dataset contains Pokémon images with associated type information
-- Implemented baseline image preprocessing pipeline with resizing to 512x512
-
-### 2. Normalization Statistics Calculation (`normalization_calculator.py`)
-- Created a utility to calculate dataset-specific normalization statistics
-- Computes mean and standard deviation across all RGB channels from the training split
-- Uses online calculation to process the entire dataset efficiently
-- **Calculated values:**
+### 1. Data Pipeline & Analysis
+- **Integration**: Integrated the `pranavs28/pokemon_types` dataset.
+- **Distribution Analysis**: Mapped class imbalances using `analyze_distribution.py` to understand the prevalence of types like Water/Normal vs. rarer types like Ice/Ghost.
+- **Normalization**: Calculated custom normalization statistics (Mean/Std) specifically for this dataset using `normalization_calculator.py` to ensure optimal model convergence.
   - Mean: `[0.8412, 0.8291, 0.8151]`
   - Std: `[0.2417, 0.2473, 0.2593]`
-- These statistics are used in the preprocessing pipeline for proper data normalization
 
-### 3. Data Visualization (`classifier.py`)
-- Implemented `display_sample_images()` function to visualize random samples from the dataset
-- Created `extract_types()` utility function to parse and clean Pokémon type information from text
-  - Removes stop words like "and", "type", "pokemon"
-  - Extracts clean type labels (e.g., "fire/fighting")
-- Displays 5 random images with their corresponding types using matplotlib
+### 2. Model Architecture
+- **Custom CNN**: Implemented a 6-layer Convolutional Neural Network with:
+  - Adaptive Average Pooling `(4,4)` to handle spatial feature variations.
+  - Dropout (`0.5`) in fully connected layers to mitigate overfitting.
+- **Multi-Label Support**: Designed for 18 distinct types using a multi-hot encoding scheme.
 
-### 4. Preprocessing Pipeline
-- Implemented a torchvision transforms pipeline including:
-  - Resize to 512x512 pixels
-  - Conversion to tensor format
-  - Normalization using calculated dataset statistics
+### 3. Training Strategy (`classifier_training.py`)
+- **Loss Function**: Implemented `BCEWithLogitsLoss` with **calculated class weights** (`pos_weights`) to counter the significant dataset imbalance (e.g., Water types being much more common than Ice).
+- **Optimizer**: Utilized SGD with momentum (`0.9`) for stable convergence.
+- **Artifacts**: Saves the best model state to `pokemon_classifier.pth`.
+
+### 4. Inference & Visualization (`run_classifier.py`)
+- **Preprocessing**: Robust pipeline resizing images to 512x512 and applying the calculated normalization.
+- **Inference Engine**: Loads the trained model and applies a threshold-based prediction logic.
+- **Visualizer**: Uses `extract_types()` and Matplotlib to display side-by-side comparisons of Ground Truth vs. Predicted types.
 
 ## Project Structure
 
 ```
 Himantes/
-├── classifier.py                  # Main classification script with visualization
-├── normalization_calculator.py    # Dataset normalization statistics calculator
-├── requirements.txt               # Project dependencies (to be populated)
-└── README.md                      # This file
+├── classifier_training.py     # Main training script (Model definition + Training Loop)
+├── run_classifier.py          # Inference script for visualization and testing
+├── analyze_distribution.py    # Utility to analyze dataset class distribution
+├── normalization_calculator.py # Script to compute dataset mean/std
+├── requirements.txt           # Project dependencies
+└── README.md                  # Project documentation
 ```
 
 ## Dependencies
+- `torch` (PyTorch)
+- `datasets` (Hugging Face)
+- `torchvision`
+- `matplotlib`
+- `numpy`
 
-The project uses:
-- `torch` - PyTorch deep learning framework
-- `datasets` - Hugging Face datasets library
-- `torchvision` - Computer vision utilities
-- `matplotlib` - Visualization library
+## Usage (Historical)
 
-## Usage
+### 1. Train the Model
+```bash
+python classifier_training.py
+```
 
-### Calculate Normalization Statistics
+### 2. Run Inference (Visualize Results)
+```bash
+python run_classifier.py
+```
+
+### 3. Utilities
 ```bash
 python normalization_calculator.py
+python analyze_distribution.py
 ```
-
-### View Sample Images
-```bash
-python classifier.py
-```
-
-## Next Steps
-
-- [ ] Populate `requirements.txt` with dependency versions
-- [ ] Implement the actual classifier model architecture
-- [ ] Train the classifier on Pokémon type prediction
-- [ ] Evaluate model performance
-- [ ] Explore diffusion model implementation for Pokémon generation
